@@ -3,6 +3,7 @@ package com.stemapp.ml
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import com.stemapp.model.AnalysisResult
 import com.stemapp.model.AppSettings
@@ -94,16 +95,131 @@ class OnnxInference {
     fun isModelLoaded(): Boolean = ortSession != null && modelInfo != null
     fun getModelInfo(): ModelInfo? = modelInfo
 
+    // ==================== 前景提取（去背景噪点） ====================
+
+    /**
+     * 基于 HSV 颜色特征 + 连通域分析去除背景噪点
+     * 保留茎秆主体区域，背景置为纯白
+     */
+    fun removeBackground(src: Bitmap): Bitmap {
+        val w = src.width; val h = src.height
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        // Step 1: HSV 颜色筛选 — 茎秆通常为黄褐色/绿色
+        val mask = IntArray(w * h) { 0 }  // 0=背景, 1=候选
+        for (i in 0 until w * h) {
+            val p = pixels[i]
+            val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF
+
+            // RGB → HSV
+            val max = maxOf(r, g, b); val min = minOf(r, g, b)
+            var hDeg = 0f; val s = if (max == 0) 0f else (max - min).toFloat() / max * 255f
+            if (max != min) {
+                val diff = (max - min).toFloat()
+                hDeg = when (max) {
+                    r -> ((g - b).toFloat() / diff * 60 + 360) % 360
+                    g -> ((b - r).toFloat() / diff + 120)
+                    else -> ((r - g).toFloat() / diff + 240)
+                }
+            }
+
+            // 茎秆区域：H 在 0°-60°(红黄) 或 270°-330°(紫褐)，或高饱和度
+            // 背景区域：低饱和度(白/灰)，或高亮度(纯白背景)
+            val v = max.toFloat()  // 亮度
+
+            val isStem = when {
+                s > 50f && hDeg in 0f..70f -> true          // 黄褐色茎秆
+                s > 60f && hDeg in 15f..50f -> true          // 绿色茎秆
+                s > 80f && hDeg in 270f..340f -> true         // 紫褐色茎秆
+                s < 30f && v < 180f -> true                   // 深色区域（低饱和低亮度=茎秆阴影）
+                v > 230f && s < 30f -> false                  // 纯白背景
+                else -> false
+            }
+
+            if (isStem) mask[i] = 1
+        }
+
+        // Step 2: 连通域分析，保留最大连通域
+        // 先做简单腐蚀（3x3）去除孤立的噪点
+        val eroded = IntArray(w * h)
+        for (y in 1 until h - 1) {
+            for (x in 1 until w - 1) {
+                val idx = y * w + x
+                var anyBg = false
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (mask[(y + dy) * w + (x + dx)] == 0) anyBg = true
+                    }
+                }
+                eroded[idx] = if (anyBg) 0 else 1
+            }
+        }
+
+        // 膨胀恢复茎秆主体
+        val dilated = IntArray(w * h)
+        for (y in 1 until h - 1) {
+            for (x in 1 until w - 1) {
+                val idx = y * w + x
+                var anyFg = false
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (eroded[(y + dy) * w + (x + dx)] == 1) anyFg = true
+                    }
+                }
+                dilated[idx] = if (anyFg) 1 else 0
+            }
+        }
+
+        // 连通域标记，找最大连通域
+        val (labels, numLabels) = connectedComponents(dilated, h, w)
+        val areaMap = IntArray(numLabels + 1)
+        for (i in 0 until w * h) {
+            val l = labels[i]; if (l > 0) areaMap[l]++
+        }
+
+        // 找最大面积的标签
+        var maxArea = 0; var maxLabel = 0
+        for (l in 1..numLabels) {
+            if (areaMap[l] > maxArea) { maxArea = areaMap[l]; maxLabel = l }
+        }
+
+        // 噪声面积阈值（小于图像面积 2% 的连通域视为噪声）
+        val noiseThresh = (w * h * 0.02).toInt()
+
+        // Step 3: 生成最终 mask，背景置纯白
+        val result = src.copy(Bitmap.Config.ARGB_8888, true)
+        val resultPixels = IntArray(w * h)
+        src.getPixels(resultPixels, 0, w, 0, 0, w, h)
+
+        for (i in 0 until w * h) {
+            val label = labels[i]
+            if (label != maxLabel || (label > 0 && areaMap[label] < noiseThresh)) {
+                // 背景 → 纯白
+                resultPixels[i] = 0xFFFFFFFF.toInt()
+            }
+        }
+        result.setPixels(resultPixels, 0, w, 0, 0, w, h)
+        return result
+    }
+
     // ==================== 推理 ====================
 
-    fun runInference(bitmap: Bitmap): SegmentationResult? {
+    fun runInference(bitmap: Bitmap, settings: AppSettings? = null): SegmentationResult? {
         val session = ortSession ?: return null
         val info = modelInfo ?: return null
 
         val startTime = System.currentTimeMillis()
 
+        // 前景提取（去除背景噪点）
+        val processedBitmap = if (settings != null && settings.enableForegroundMask) {
+            removeBackground(bitmap)
+        } else {
+            bitmap
+        }
+
         val resizedBitmap = Bitmap.createScaledBitmap(
-            bitmap, info.inputWidth, info.inputHeight, true
+            processedBitmap, info.inputWidth, info.inputHeight, true
         )
         val inputTensor = preprocess(resizedBitmap, info)
 
@@ -138,7 +254,7 @@ class OnnxInference {
         )
     }
 
-    fun runInferenceFromPath(imagePath: String): SegmentationResult? {
+    fun runInferenceFromPath(imagePath: String, settings: AppSettings? = null): SegmentationResult? {
         // 采样解码：限制最大尺寸不超过 2048px，防止 OOM
         val opts = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
@@ -155,14 +271,14 @@ class OnnxInference {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val bitmap = BitmapFactory.decodeFile(imagePath, decodeOpts) ?: return null
-        return runInference(bitmap)
+        return runInference(bitmap, settings)
     }
 
-    fun runInferenceFromUri(context: Context, uri: Uri): SegmentationResult? {
+    fun runInferenceFromUri(context: Context, uri: Uri, settings: AppSettings? = null): SegmentationResult? {
         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
         val bitmap = BitmapFactory.decodeStream(inputStream)
         inputStream.close()
-        return runInference(bitmap)
+        return runInference(bitmap, settings)
     }
 
     // ==================== 维管束分析 ====================

@@ -107,7 +107,7 @@ fun ResultScreen(
     LaunchedEffect(imagePath) {
         withContext(Dispatchers.IO) {
             try {
-                val seg = onnxInference.runInferenceFromPath(imagePath)
+                val seg = onnxInference.runInferenceFromPath(imagePath, settings)
                 if (seg != null) {
                     segResult = seg
                     val analysis = onnxInference.analyzeConnectedComponents(settings)
