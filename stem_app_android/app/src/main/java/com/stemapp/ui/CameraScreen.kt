@@ -6,9 +6,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +23,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -31,6 +36,7 @@ import com.stemapp.ml.OnnxInference
 import com.stemapp.model.ModelManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -50,6 +56,7 @@ fun CameraScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var isCameraReady by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -61,6 +68,10 @@ fun CameraScreen(
     var sampleId by remember { mutableStateOf("") }
     var showSampleIdDialog by remember { mutableStateOf(false) }
     var tempSampleId by remember { mutableStateOf("") }
+
+    // 对焦动画状态
+    var focusPoint by remember { mutableStateOf<Offset?>(null) }
+    var showFocus by remember { mutableStateOf(false) }
 
     // 样本ID输入对话框
     if (showSampleIdDialog) {
@@ -119,18 +130,18 @@ fun CameraScreen(
                         .build()
                     imageCapture = imageCaptureObj
 
-                    // 将 Preview 连接到 PreviewView（关键修复！）
                     preview.setSurfaceProvider(pv.surfaceProvider)
 
                     val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                     cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
+                    val cam = cameraProvider.bindToLifecycle(
                         lifecycleOwner,
                         cameraSelector,
                         preview,
                         imageCaptureObj
                     )
+                    camera = cam
                     isCameraReady = true
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -149,7 +160,6 @@ fun CameraScreen(
                     )
                 },
                 actions = {
-                    // 样本ID按钮
                     IconButton(onClick = {
                         tempSampleId = sampleId
                         showSampleIdDialog = true
@@ -194,11 +204,44 @@ fun CameraScreen(
                 factory = { ctx ->
                     PreviewView(ctx).apply {
                         scaleType = PreviewView.ScaleType.FILL_CENTER
-                        // 创建完成后回调初始化相机
+                        // 点击对焦
+                        setOnTouchListener { _, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_UP && isCameraReady) {
+                                val x = event.x
+                                val y = event.y
+                                val pv = this
+                                // 用 PreviewView 的 meteringPointFactory 转换坐标
+                                val factory = pv.meteringPointFactory
+                                val point = factory.createPoint(x, y)
+                                val action = FocusMeteringAction.Builder(point).build()
+                                camera?.cameraControl?.startFocusAndMetering(action)
+                                // 对焦动画
+                                focusPoint = Offset(x * pv.width / pv.width, y * pv.height / pv.height)
+                                showFocus = true
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    delay(800)
+                                    showFocus = false
+                                }
+                            }
+                            true
+                        }
                         post { onPreviewViewCreated(this) }
                     }
                 }
             )
+
+            // 对焦动画覆盖层
+            if (showFocus && focusPoint != null) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val fp = focusPoint!!
+                    val cx = fp.x; val cy = fp.y
+                    val r = minOf(size.width, size.height) * 0.06f
+                    drawRect(Color(0xCCFFFF00.toInt()), Offset(cx - r, cy - r),
+                        androidx.compose.ui.geometry.Size(r * 2, r * 2), style = Stroke(3f))
+                    drawLine(Color(0xCCFFFF00.toInt()), Offset(cx - r * 0.3f, cy), Offset(cx + r * 0.3f, cy), 2f)
+                    drawLine(Color(0xCCFFFF00.toInt()), Offset(cx, cy - r * 0.3f), Offset(cx, cy + r * 0.3f), 2f)
+                }
+            }
 
             Row(
                 modifier = Modifier
@@ -209,7 +252,6 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 导入图片按钮
                 FloatingActionButton(
                     onClick = {
                         isProcessing = true
@@ -220,7 +262,6 @@ fun CameraScreen(
                     Icon(Icons.Default.Image, contentDescription = "导入图片")
                 }
 
-                // 拍照按钮
                 FloatingActionButton(
                     onClick = {
                         if (!isModelLoaded) {
@@ -266,7 +307,6 @@ fun CameraScreen(
                 Spacer(modifier = Modifier.size(56.dp))
             }
 
-            // 未加载模型提示
             if (!isModelLoaded) {
                 Surface(
                     modifier = Modifier
