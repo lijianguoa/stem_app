@@ -1,0 +1,24 @@
+# Android
+stem_app_android/.gradle/
+stem_app_android/app/build/
+stem_app_android/build/
+stem_app_android/local.properties
+*.iml
+.idea/
+*.apk
+*.ap_
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ONNX models (large binary files)
+data/*.onnx
+results/
+results_fp32/
+
+# Temp
+tmp/
+*.log
