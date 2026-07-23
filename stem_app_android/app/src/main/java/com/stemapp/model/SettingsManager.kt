@@ -24,8 +24,7 @@ class SettingsManager(context: Context) {
             pixelsPerMicron = prefs.getFloat("pixels_per_micron", 1.0f).toDouble(),
             scaleBarLength = prefs.getFloat("scale_bar_length", 500.0f).toDouble(),
             scaleBarPixels = prefs.getFloat("scale_bar_pixels", 0.0f).toDouble(),
-            targetClassId = prefs.getInt("target_class_id", 1),
-            enableForegroundMask = prefs.getBoolean("enable_foreground_mask", false)
+            targetClassId = prefs.getInt("target_class_id", 1)
         )
     }
 
@@ -42,7 +41,6 @@ class SettingsManager(context: Context) {
             putFloat("scale_bar_length", settings.scaleBarLength.toFloat())
             putFloat("scale_bar_pixels", settings.scaleBarPixels.toFloat())
             putInt("target_class_id", settings.targetClassId)
-            putBoolean("enable_foreground_mask", settings.enableForegroundMask)
             apply()
         }
     }

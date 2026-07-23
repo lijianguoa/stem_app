@@ -107,7 +107,7 @@ fun ResultScreen(
     LaunchedEffect(imagePath) {
         withContext(Dispatchers.IO) {
             try {
-                val seg = onnxInference.runInferenceFromPath(imagePath, settings)
+                val seg = onnxInference.runInferenceFromPath(imagePath)
                 if (seg != null) {
                     segResult = seg
                     val analysis = onnxInference.analyzeConnectedComponents(settings)
@@ -212,6 +212,8 @@ fun ResultScreen(
                             analysis = analysis!!,
                             settings = settings,
                             inferenceTimeMs = seg.inferenceTimeMs,
+                            segResult = seg,
+                            resultRepo = resultRepo,
                             onSaveResult = {
                                 scope.launch(Dispatchers.IO) {
                                     resultRepo.saveResult(sampleId, analysis, settingsManager.getSettings())
@@ -404,6 +406,8 @@ private fun ResultInfoCard(
     analysis: AnalysisResult,
     settings: com.stemapp.model.AppSettings,
     inferenceTimeMs: Long,
+    segResult: OnnxInference.SegmentationResult,
+    resultRepo: ResultRepository,
     onSaveResult: () -> Unit,
     resultSaved: Boolean,
     snackbarHostState: SnackbarHostState
@@ -454,8 +458,13 @@ private fun ResultInfoCard(
                         Spacer(Modifier.height(4.dp))
                         InfoRow("数量", "${cluster.count}")
                         InfoRow("平均面积", areaStr)
-                        InfoRow("范围", "${"%.1f".format(cluster.minArea)} - ${"%.1f".format(cluster.maxArea)}" +
-                                (if (hasScale && cluster.meanAreaUm2 != null) " px" else " px"))
+                        val rangeStr = if (hasScale && cluster.meanAreaUm2 != null) {
+                            val scale = cluster.meanAreaUm2 / cluster.meanArea
+                            "${"%.1f".format(cluster.minArea * scale)} - ${"%.1f".format(cluster.maxArea * scale)} μm²"
+                        } else {
+                            "${"%.1f".format(cluster.minArea)} - ${"%.1f".format(cluster.maxArea)} px"
+                        }
+                        InfoRow("范围", rangeStr)
                     }
                 }
             }
@@ -482,7 +491,7 @@ private fun ResultInfoCard(
             Spacer(Modifier.height(8.dp))
 
             // 导出按钮
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(
                     onClick = {
                         exporting = true
@@ -491,13 +500,13 @@ private fun ResultInfoCard(
                             val file = ResultRepository.exportTextToFile(context, text)
                             withContext(Dispatchers.Main) {
                                 exporting = false
-                                snackbarHostState.showSnackbar(if (file != null) "文本已导出到 ${file.absolutePath}" else "导出失败")
+                                snackbarHostState.showSnackbar(if (file != null) "文本已导出" else "导出失败")
                             }
                         }
                     },
                     modifier = Modifier.weight(1f),
                     enabled = !exporting
-                ) { Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("导出文本", fontSize = 11.sp) }
+                ) { Icon(Icons.Default.Description, null, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(2.dp)); Text("文本", fontSize = 11.sp) }
 
                 OutlinedButton(
                     onClick = {
@@ -507,16 +516,44 @@ private fun ResultInfoCard(
                             val file = ResultRepository.exportJsonToFile(context, json)
                             withContext(Dispatchers.Main) {
                                 exporting = false
-                                snackbarHostState.showSnackbar(if (file != null) "JSON已导出到 ${file.absolutePath}" else "导出失败")
+                                snackbarHostState.showSnackbar(if (file != null) "JSON已导出" else "导出失败")
                             }
                         }
                     },
                     modifier = Modifier.weight(1f),
                     enabled = !exporting
-                ) { Icon(Icons.Default.Code, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("导出JSON", fontSize = 11.sp) }
+                ) { Icon(Icons.Default.Code, null, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(2.dp)); Text("JSON", fontSize = 11.sp) }
+
+                // 导出全部：原图 + Mask + JSON + TXT
+                Button(
+                    onClick = {
+                        exporting = true
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val exportDir = File(context.getExternalFilesDir(null), "stem_exports").also { it.mkdirs() }
+                                val bName = "${sampleId.filter { it.isLetterOrDigit() }}_${java.text.SimpleDateFormat("HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}"
+                                // 原图
+                                FileOutputStream(File(exportDir, "${bName}_original.jpg")).use { segResult.original.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                                // Mask
+                                FileOutputStream(File(exportDir, "${bName}_mask.png")).use { segResult.mask.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                // JSON
+                                File(exportDir, "${bName}.json").writeText(ResultRepository(context).generateJsonReport())
+                                // TXT
+                                File(exportDir, "${bName}.txt").writeText(ResultRepository(context).generateTextReport())
+                                withContext(Dispatchers.Main) { snackbarHostState.showSnackbar("导出完成") }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                withContext(Dispatchers.Main) { snackbarHostState.showSnackbar("导出失败: ${e.message}") }
+                            }
+                            exporting = false
+                        }
+                    },
+                    modifier = Modifier.weight(1.5f),
+                    enabled = !exporting && sampleId.isNotEmpty()
+                ) { Icon(Icons.Default.Archive, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(2.dp)); Text("导出全部", fontSize = 11.sp) }
             }
 
-            // 分享提示
+            // 文件路径提示
             Text(
                 "导出的文件位于: 内部存储/Android/data/com.stemapp/files/stem_exports/",
                 style = MaterialTheme.typography.bodySmall,

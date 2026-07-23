@@ -28,7 +28,6 @@ fun SettingsScreen(
     var enableFilter by remember { mutableStateOf(currentSettings.enableFilter) }
     var filterSigma by remember { mutableStateOf(currentSettings.filterSigma.toFloat()) }
     var targetClassId by remember { mutableStateOf(currentSettings.targetClassId.toString()) }
-    var enableForegroundMask by remember { mutableStateOf(currentSettings.enableForegroundMask) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
@@ -46,8 +45,7 @@ fun SettingsScreen(
                             kmeansK = kmeansK,
                             enableFilter = enableFilter,
                             filterSigma = filterSigma.toDouble(),
-                            targetClassId = targetClassId.toIntOrNull() ?: 1,
-                            enableForegroundMask = enableForegroundMask
+                            targetClassId = targetClassId.toIntOrNull() ?: 1
                         )
                         settingsManager.saveSettings(newSettings)
                     }) {
@@ -113,26 +111,6 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // ===== 前景提取（去除背景噪点） =====
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("前景提取", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("自动识别茎秆主体区域，去除背景噪点和杂斑\n基于 HSV 颜色特征 + 连通域分析，不影响分割模型",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("启用前景提取")
-                        Switch(checked = enableForegroundMask, onCheckedChange = { enableForegroundMask = it })
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
