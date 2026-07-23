@@ -23,3 +23,8 @@ results_fp32/
 tmp/
 *.log
 .claude/
+*.exe
+*.zip
+*.apk
+data/Genealized*
+data/*.onnx
