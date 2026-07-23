@@ -182,7 +182,7 @@ class OnnxInference {
      * @param settings 全局设置（k值、滤波开关、比例尺）
      * @return 分析结果
      */
-    fun analyzeVascularBundles(settings: AppSettings): AnalysisResult? {
+    fun analyzeConnectedComponents(settings: AppSettings): AnalysisResult? {
         val classMap = lastClassMap ?: return null
         val h = lastOutputHeight
         val w = lastOutputWidth
@@ -190,10 +190,11 @@ class OnnxInference {
         // 计算比例尺（像素→微米）
         val pxPerUm = computePixelsPerMicron(settings)
 
-        // 1. 提取类别1（维管束）的二值图
+        // 1. 提取目标类别的二值图（默认类别1）
+        val targetClass = settings.targetClassId
         val binary = IntArray(h * w)
         for (i in 0 until h * w) {
-            binary[i] = if (classMap[i] == 1) 1 else 0
+            binary[i] = if (classMap[i] == targetClass) 1 else 0
         }
 
         // 2. 连通域标记
@@ -285,7 +286,7 @@ class OnnxInference {
         }
 
         // 9. 生成标注图 + 类别着色图
-        val vesselBitmap = createVesselLabelBitmap(labels, h, w, numLabels, areaMap, filteredAreas, rawAreas)
+        val vesselBitmap = createComponentLabelBitmap(labels, h, w, numLabels, areaMap, filteredAreas, rawAreas)
         val origBitmap = lastOriginalBitmap
         val (clusterMask, clusterOverlay) = if (origBitmap != null && clusters.size > 1) {
             createClusterMaskAndOverlay(labels, h, w, labelToCluster, clusters.size, origBitmap)
@@ -494,7 +495,7 @@ class OnnxInference {
     /**
      * 生成标注了编号和边界的维管束图
      */
-    private fun createVesselLabelBitmap(
+    private fun createComponentLabelBitmap(
         labels: IntArray, h: Int, w: Int,
         numLabels: Int, areaMap: IntArray,
         filteredAreas: List<Double>, rawAreas: List<Int>

@@ -27,6 +27,7 @@ fun SettingsScreen(
     var kmeansK by remember { mutableStateOf(currentSettings.kmeansK) }
     var enableFilter by remember { mutableStateOf(currentSettings.enableFilter) }
     var filterSigma by remember { mutableStateOf(currentSettings.filterSigma.toFloat()) }
+    var targetClassId by remember { mutableStateOf(currentSettings.targetClassId.toString()) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
@@ -43,7 +44,8 @@ fun SettingsScreen(
                         val newSettings = currentSettings.copy(
                             kmeansK = kmeansK,
                             enableFilter = enableFilter,
-                            filterSigma = filterSigma.toDouble()
+                            filterSigma = filterSigma.toDouble(),
+                            targetClassId = targetClassId.toIntOrNull() ?: 1
                         )
                         settingsManager.saveSettings(newSettings)
                     }) {
@@ -79,6 +81,29 @@ fun SettingsScreen(
                                 selected = kmeansK == k,
                                 onClick = { kmeansK = k },
                                 label = { Text("$k") }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ===== 目标分割类别 =====
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("目标分割类别", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("选择要分析的类别（1=第一个类别，2=第二个类别...）\n如果模型有多个输出通道，可在此切换",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 2, 3, 4, 5).forEach { c ->
+                            FilterChip(
+                                selected = targetClassId == c.toString(),
+                                onClick = { targetClassId = c.toString() },
+                                label = { Text("类别 $c") }
                             )
                         }
                     }

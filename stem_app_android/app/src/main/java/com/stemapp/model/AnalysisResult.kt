@@ -42,5 +42,6 @@ data class AppSettings(
     val enableScale: Boolean = false,     // 是否启用比例尺换算
     val pixelsPerMicron: Double = 1.0,    // 每微米对应像素数
     val scaleBarLength: Double = 500.0,   // 标尺实际长度 (微米)
-    val scaleBarPixels: Double = 0.0      // 标尺在图片上的像素长度
+    val scaleBarPixels: Double = 0.0,     // 标尺在图片上的像素长度
+    val targetClassId: Int = 1             // 连通域分析目标类别 (1=默认第一类)
 )

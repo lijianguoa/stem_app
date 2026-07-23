@@ -23,7 +23,8 @@ class SettingsManager(context: Context) {
             enableScale = prefs.getBoolean("enable_scale", false),
             pixelsPerMicron = prefs.getFloat("pixels_per_micron", 1.0f).toDouble(),
             scaleBarLength = prefs.getFloat("scale_bar_length", 500.0f).toDouble(),
-            scaleBarPixels = prefs.getFloat("scale_bar_pixels", 0.0f).toDouble()
+            scaleBarPixels = prefs.getFloat("scale_bar_pixels", 0.0f).toDouble(),
+            targetClassId = prefs.getInt("target_class_id", 1)
         )
     }
 
@@ -39,6 +40,7 @@ class SettingsManager(context: Context) {
             putFloat("pixels_per_micron", settings.pixelsPerMicron.toFloat())
             putFloat("scale_bar_length", settings.scaleBarLength.toFloat())
             putFloat("scale_bar_pixels", settings.scaleBarPixels.toFloat())
+            putInt("target_class_id", settings.targetClassId)
             apply()
         }
     }

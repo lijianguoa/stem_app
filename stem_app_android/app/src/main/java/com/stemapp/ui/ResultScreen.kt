@@ -110,7 +110,7 @@ fun ResultScreen(
                 val seg = onnxInference.runInferenceFromPath(imagePath)
                 if (seg != null) {
                     segResult = seg
-                    val analysis = onnxInference.analyzeVascularBundles(settings)
+                    val analysis = onnxInference.analyzeConnectedComponents(settings)
                     analysisResult = analysis
                 } else {
                     errorMessage = "推理失败：请检查模型是否正确加载"
