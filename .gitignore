@@ -15,7 +15,6 @@ __pycache__/
 *.egg-info/
 
 # ONNX models (large binary files)
-data/*.onnx
 results/
 results_fp32/
 
@@ -27,4 +26,3 @@ tmp/
 *.zip
 *.apk
 data/Genealized*
-data/*.onnx
